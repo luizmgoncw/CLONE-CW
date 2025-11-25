@@ -1,0 +1,4 @@
+killall livox_ros_drive
+killall livox_ros_drive2
+killall python3
+killall fastlio_mapping

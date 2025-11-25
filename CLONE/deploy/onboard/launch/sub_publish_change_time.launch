@@ -1,0 +1,5 @@
+<!-- rotate_point_cloud.launch -->
+<launch>
+    <node pkg="fast_lio_localization" type="sub_publish_change_time.py" name="sub_publish_change_time" output="screen">
+    </node>
+</launch>

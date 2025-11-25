@@ -1,0 +1,8 @@
+<launch>
+    <node pkg="fast_lio_localization" type="tf_replicator.py" name="tf_replicator" output="screen">
+        <param name="source_frame_parent" value="camera_init"/>
+        <param name="source_frame_child" value="body"/>
+        <param name="target_frame_parent" value="odom"/>
+        <param name="target_frame_child" value="base_footprint"/>
+    </node>
+</launch>

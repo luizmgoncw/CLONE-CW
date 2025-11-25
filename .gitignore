@@ -1,0 +1,10 @@
+# Python environments
+**/venv/
+**/__pycache__/
+*.pyc
+*.pyo
+*.so
+
+# Large binary files
+*.bin
+*.weights

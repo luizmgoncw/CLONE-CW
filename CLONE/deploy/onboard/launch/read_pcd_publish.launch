@@ -1,0 +1,17 @@
+<!-- read_pcd_publish.launch -->
+<launch>
+    <!-- 参数: pcd文件路径和发布话题 -->
+    <arg name="pcd_file_path" default="/home/unitree/nav/mapping_pcd/fastlio_lc_ros1/bigai_15-01-23_light_backFilter.pcd" />
+    <arg name="publish_topic" default="/map3d" />
+    <arg name="use_bag_time" default="0" />
+
+    <node pkg="fast_lio_localization" type="read_pcd_publish.py" name="read_pcd_publish" output="screen">
+        <param name="pcd_file_path" value="$(arg pcd_file_path)" />
+        <param name="publish_topic" value="$(arg publish_topic)" />
+        <param name="map_topic" value="/map2d" />
+        <param name="resolution" value="0.05" />
+        <param name="use_bag_time" value="(arg use_bag_time)" />
+    </node>
+
+    
+</launch>
