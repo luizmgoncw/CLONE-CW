@@ -8,3 +8,4 @@
 # Large binary files
 *.bin
 *.weights
+.claude/
