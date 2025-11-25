@@ -84,6 +84,48 @@ Status: Server Running
 
 ---
 
+## 🚀 GUIA RÁPIDO DE EXECUÇÃO
+
+### **Ordem de Inicialização:**
+
+Para executar o sistema CLONE, siga esta sequência exata:
+
+#### **Terminal 1 (SSH no G1 PC2):**
+```bash
+~/onboard/localization_server.sh
+```
+Aguarde até ver as mensagens de localização rodando (~10Hz).
+
+#### **Terminal 2 (SSH no G1 PC2):**
+```bash
+python ~/onboard/image_server/image_server.py
+```
+Aguarde até ver "Image server listening...".
+
+#### **Terminal 3 (Server PC):**
+```bash
+./start_lowcmd.sh
+```
+Aguarde até ver "[Lowcmd Publisher] Node initialized".
+
+#### **Terminal 4 (Server PC):**
+```bash
+# IMPORTANTE: Só execute após iniciar o Tracking Streamer no Apple Vision Pro
+./start_g1_server.sh
+```
+
+**⚠️ ATENÇÃO:**
+- Inicie o **Tracking Streamer no Apple Vision Pro** ANTES de executar o Terminal 4
+- Verifique no Tracking Streamer: "Server Running" (IP: 0.0.0.0)
+- Aguarde todos os componentes estarem rodando antes de testar movimentos
+
+### **Controles:**
+- **R1/R2**: Calibração (Location Offset Reset)
+- **L1**: Iniciar/parar policy neural
+- **Gamepad**: Navegação e ajustes finos
+
+---
+
 ## 🔧 CORREÇÕES NECESSÁRIAS
 
 ### **1. Import do VisionWrapper**
