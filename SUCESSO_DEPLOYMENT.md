@@ -313,3 +313,52 @@ Vision Pro → Server PC → G1 PC2 → Unitree G1
 **Equipe**: Luiz + Claude Code
 **Duração**: ~6 horas (instalação + troubleshooting + testes)
 **Resultado**: 🏆 **SUCESSO TOTAL**
+
+---
+
+## 📝 ATUALIZAÇÕES
+
+### **2025-11-26: Correções de Compatibilidade**
+
+#### **Problema: RTX 5090 não compatível com PyTorch/NumPy antigos**
+- RTX 5090 (arquitetura Blackwell, sm_120) requer PyTorch 2.6+ com CUDA 13.0
+- CLONE original usa NumPy 1.23.0 que não é compatível com PyTorch novo
+- **Solução**: Forçar uso de CPU no `g1_server.py`:
+  ```python
+  # Em class G1.__init__():
+  self.device = 'cpu'  # Force CPU mode (RTX 5090 not compatible)
+  ```
+
+#### **Problema: dex_retargeting versão incompatível**
+- CLONE requirements pede `dex_retargeting==0.1.1`
+- Versão instalada era 0.4.7 (modificada pelo xr_teleoperate)
+- Parâmetro no YAML mudou: `target_link_human_indices` → `target_link_human_indices_vector`
+- **Solução**: Corrigido `unitree_dex3.yml` para usar nome correto do parâmetro
+
+#### **Problema: Calibração R1/R2 não funcionava**
+- Robô no MuJoCo não se reposicionava para alinhar com tracker
+- **Causa**: Servidor ZMQ de localização (`pos_server.py`) não estava rodando no PC2
+- Erro: `zmq.error.ZMQError: Address already in use (addr='tcp://*:6006')`
+- **Solução**: Matar processo antigo que estava usando a porta:
+  ```bash
+  # No PC2:
+  sudo fuser -k 6006/tcp
+  # Depois reiniciar localization_server.sh
+  ```
+
+#### **Dica de Debug: Testar conexão ZMQ**
+```bash
+# No Server PC, testar se dados de localização estão chegando:
+python3 -c "
+import zmq, pickle
+ctx = zmq.Context()
+sock = ctx.socket(zmq.SUB)
+sock.connect('tcp://192.168.123.164:6006')
+sock.setsockopt_string(zmq.SUBSCRIBE, '')
+sock.setsockopt(zmq.RCVTIMEO, 3000)
+try:
+    print('Dados:', pickle.loads(sock.recv()))
+except zmq.Again:
+    print('Timeout - verificar pos_server no PC2')
+"
+```

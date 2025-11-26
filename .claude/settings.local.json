@@ -3,7 +3,8 @@
     "allow": [
       "Bash(tree:*)",
       "Bash(ngrok version:*)",
-      "Bash(ngrok config check:*)"
+      "Bash(ngrok config check:*)",
+      "Bash(cat:*)"
     ],
     "deny": [],
     "ask": []

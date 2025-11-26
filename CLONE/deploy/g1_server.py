@@ -37,6 +37,16 @@ from dex_server import start_dex_server
 import datetime
 from config import VISION_WRAPPER_BACKEND, VISION_PRO_IP, VISION_PRO_DELTA_H, USE_DEX_HANDS
 
+# Importar tipo de mão do config (default: dex3)
+try:
+    from config import HAND_TYPE
+except ImportError:
+    HAND_TYPE = 'dex3'
+
+# Importar controlador Inspire FTP se necessário
+if HAND_TYPE == 'inspire':
+    from teleop.robot_control.robot_hand_inspire_ftp import Inspire_FTP_Controller
+
 import mujoco
 import mujoco.viewer
 
@@ -453,10 +463,18 @@ class DeployNode(Node):
         self.body_pos_extend = self.loc_recv_data[7:].view((HW_DOF + 1 + 3), 3)
 
         if USE_DEX:
-            self.dex_shm_send = shared_memory.SharedMemory(create=True, size=(75 * 2 + 7 * 2 + 1) * 4)
-            self.dex_shm_send_data = np.ndarray(((75 * 2 + 7 * 2 + 1),), dtype=np.float32, buffer=self.dex_shm_send.buf)
-            self.dex_shm_recv = shared_memory.SharedMemory(create=True, size=14 * 4)
-            self.dex_shm_recv_data = np.ndarray((14, ), dtype=np.float32, buffer=self.dex_shm_recv.buf)
+            if HAND_TYPE == 'inspire':
+                # Inspire: 6 DOFs por mão = 12 total
+                self.dex_shm_send = shared_memory.SharedMemory(create=True, size=(75 * 2 + 6 * 2 + 1) * 4)
+                self.dex_shm_send_data = np.ndarray(((75 * 2 + 6 * 2 + 1),), dtype=np.float32, buffer=self.dex_shm_send.buf)
+                self.dex_shm_recv = shared_memory.SharedMemory(create=True, size=12 * 4)
+                self.dex_shm_recv_data = np.ndarray((12, ), dtype=np.float32, buffer=self.dex_shm_recv.buf)
+            else:
+                # DEX3: 7 DOFs por mão = 14 total
+                self.dex_shm_send = shared_memory.SharedMemory(create=True, size=(75 * 2 + 7 * 2 + 1) * 4)
+                self.dex_shm_send_data = np.ndarray(((75 * 2 + 7 * 2 + 1),), dtype=np.float32, buffer=self.dex_shm_send.buf)
+                self.dex_shm_recv = shared_memory.SharedMemory(create=True, size=14 * 4)
+                self.dex_shm_recv_data = np.ndarray((14, ), dtype=np.float32, buffer=self.dex_shm_recv.buf)
 
         self.loc_process = Process(target=localization.start_service, args=[self.loc_shm_send.name, self.loc_shm_recv.name, self.loc_shm_vprot.name])
         self.loc_process.start()
@@ -499,8 +517,31 @@ class DeployNode(Node):
         time.sleep(1)
 
     def launch_dex_hands(self):
-        self.dex_process = multiprocessing.get_context('spawn').Process(target=start_dex_server, args=[self.dex_shm_send.name, self.dex_shm_recv.name])
-        self.dex_process.start()
+        if HAND_TYPE == 'inspire':
+            # Usar Inspire FTP Controller
+            # NOTE: DDS is initialized inside the controller's child process
+            from multiprocessing import Array, Lock
+            # Criar arrays compartilhados para dados das mãos (25 landmarks * 3 coords = 75)
+            self.left_hand_pos_array = Array('d', 75, lock=True)
+            self.right_hand_pos_array = Array('d', 75, lock=True)
+            self.dual_hand_data_lock = Lock()
+            self.dual_hand_state_array = Array('d', 12, lock=False)  # 6 DOFs * 2 mãos
+            self.dual_hand_action_array = Array('d', 12, lock=False)
+
+            self.inspire_controller = Inspire_FTP_Controller(
+                self.left_hand_pos_array,
+                self.right_hand_pos_array,
+                self.dual_hand_data_lock,
+                self.dual_hand_state_array,
+                self.dual_hand_action_array,
+                simulation_mode=False
+            )
+            print(f"[g1_server] Inspire FTP Controller initialized")
+        else:
+            # Usar DEX3 Server (original)
+            self.dex_process = multiprocessing.get_context('spawn').Process(target=start_dex_server, args=[self.dex_shm_send.name, self.dex_shm_recv.name])
+            self.dex_process.start()
+            print(f"[g1_server] DEX3 Server initialized")
 
     def prepare(self):
         self.launch_vision_pro()
@@ -542,10 +583,6 @@ class DeployNode(Node):
             self.loc_delta_rot[:] = quat_delta_buf[0].numpy()[:]
             self.loc_delta_angle = heading.item()
 
-            # print("vp_HEAD:", self.head_rot)
-            # print("rel_OFFSET:", rel_loc_offset)
-            # print("min_BODY:", self.body_pos_extend[..., 2].min(dim=0, keepdim=True).values.numpy())
-            # print("cur_LOCATION:", self.location)
             print('Location Offset Reset')
 
     def reset_vision_pro(self):
@@ -602,7 +639,8 @@ class DeployNode(Node):
             self.reset_vision_pro()
         if self.gamepad.R2.pressed:
             self.reset_localization()
-        if self.gamepad.A.pressed and USE_DEX:
+        if self.gamepad.A.pressed and USE_DEX and HAND_TYPE != 'inspire':
+            # Lock/unlock só funciona para DEX3
             if time.monotonic() - self.last_lock_time > 1.0:
                 if self.dex_shm_send_data[164] < 1.5:
                     self.dex_shm_send_data[164] = 2.
@@ -795,8 +833,16 @@ class DeployNode(Node):
             right_wrist[2, 3] += VP_POS_DH
 
             if USE_DEX:
-                self.dex_shm_send_data[0:75] = left_hand.astype(np.float32).flatten()
-                self.dex_shm_send_data[75:150] = right_hand.astype(np.float32).flatten()
+                if HAND_TYPE == 'inspire':
+                    # Enviar para Inspire Controller via arrays compartilhados
+                    with self.left_hand_pos_array.get_lock():
+                        self.left_hand_pos_array[:] = left_hand.astype(np.float64).flatten()
+                    with self.right_hand_pos_array.get_lock():
+                        self.right_hand_pos_array[:] = right_hand.astype(np.float64).flatten()
+                else:
+                    # Enviar para DEX3 Server via shared memory
+                    self.dex_shm_send_data[0:75] = left_hand.astype(np.float32).flatten()
+                    self.dex_shm_send_data[75:150] = right_hand.astype(np.float32).flatten()
 
             head_mat = self.vp_delta_rot_mat @ head_mat
             left_wrist = self.vp_delta_rot_mat @ left_wrist
@@ -1082,13 +1128,13 @@ class DeployNode(Node):
                     self.motor_pub.publish(self.cmd_msg)
             rclpy.spin_once(self)
             self.update_mujoco()
-            if USE_DEX:
+            if USE_DEX and HAND_TYPE != 'inspire':
                 self.dex_shm_send_data[164] = -1.
             # print('############# Gravity #############')
             # print(self.projected_gravity)
-        
+
         COLLECT_SID_DATA = temp_sid
-        if USE_DEX:
+        if USE_DEX and HAND_TYPE != 'inspire':
             self.dex_shm_send_data[164] = 1.
         
         cnt = 0
@@ -1195,7 +1241,10 @@ class DeployNode(Node):
                         self.right_hand_rot
                     ]).float()
                 if USE_DEX:
-                    cur_motion = torch.cat([cur_motion, torch.from_numpy(self.dex_shm_recv_data[:14]).float().clone()])
+                    if HAND_TYPE == 'inspire':
+                        cur_motion = torch.cat([cur_motion, torch.from_numpy(self.dex_shm_recv_data[:12]).float().clone()])
+                    else:
+                        cur_motion = torch.cat([cur_motion, torch.from_numpy(self.dex_shm_recv_data[:14]).float().clone()])
                 cur_motion = cur_motion.clone()
                 self.motion_data['seq'].append(cur_motion)
             
