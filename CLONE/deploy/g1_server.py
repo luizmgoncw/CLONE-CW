@@ -681,8 +681,18 @@ class DeployNode(Node):
         if self.move_by_wireless_remote:
             lx, ly = self.gamepad.lx, self.gamepad.ly
             if abs(lx) > 0.05 or abs(ly) > 0.05:
-                self.loc_offset[0] += lx * 0.008 * np.cos(self.loc_delta_angle) + ly * 0.008 * np.sin(self.loc_delta_angle)
-                self.loc_offset[1] += - lx * 0.008 * np.sin(self.loc_delta_angle) + ly * 0.008 * np.cos(self.loc_delta_angle)
+                # Original: referencial global fixo (baseado no ângulo de calibração)
+                # self.loc_offset[0] += lx * 0.008 * np.cos(self.loc_delta_angle) + ly * 0.008 * np.sin(self.loc_delta_angle)
+                # self.loc_offset[1] += - lx * 0.008 * np.sin(self.loc_delta_angle) + ly * 0.008 * np.cos(self.loc_delta_angle)
+
+                # Novo: referencial do robô (ly frente = frente do robô)
+                # Frente do robô no mundo = [cos(heading), sin(heading)]
+                # Direita do robô no mundo = [sin(heading), -cos(heading)]
+                # Sinais negados devido à convenção do joystick (ly+ = puxar, não empurrar - TODO verificar se nao eh fake news isso aqui kkk
+                robot_heading = calc_heading(torch.from_numpy(self.obs_quat.copy()).unsqueeze(0)).item()
+                self.loc_offset[0] -= (ly * np.cos(robot_heading) + lx * np.sin(robot_heading)) * 0.008
+                self.loc_offset[1] -= (ly * np.sin(robot_heading) - lx * np.cos(robot_heading)) * 0.008
+                print('Updating loc_offset', self.loc_offset, 'heading:', np.degrees(robot_heading))
         # print(self.loc_offset)
         # imu data
         imu_data = msg.imu_state

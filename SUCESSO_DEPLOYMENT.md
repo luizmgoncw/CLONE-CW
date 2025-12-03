@@ -362,3 +362,38 @@ except zmq.Again:
     print('Timeout - verificar pos_server no PC2')
 "
 ```
+
+### **2025-12-03: Firewall bloqueando lowstate**
+
+#### **Problema: lowcmd é enviado mas lowstate não chega**
+- Sistema parece funcionar: calibração OK, policy rodando
+- `ros2 topic list` mostra `/lowstate` mas `ros2 topic echo /lowstate` não mostra nada
+- `ros2 topic info /lowstate -v` mostra **Publisher count: 0**
+- Robô está em Debug Mode mas não recebe estado
+
+#### **Causa: Firewall do Ubuntu bloqueando multicast DDS**
+- O `lowstate` usa DDS multicast para comunicação
+- Firewall (ufw) bloqueia pacotes de entrada por padrão
+- Comandos (`lowcmd`) saem, mas estados (`lowstate`) não entram
+
+#### **Solução: Desabilitar firewall no Server PC**
+```bash
+sudo ufw disable
+```
+
+#### **Alternativa (mais segura): Abrir portas específicas**
+```bash
+sudo ufw allow in from 192.168.123.0/24
+sudo ufw allow in proto udp to 224.0.0.0/4  # Multicast DDS
+```
+
+#### **Diagnóstico rápido:**
+```bash
+# Verificar se há publishers de lowstate
+ros2 topic info /lowstate -v
+
+# Se Publisher count: 0, verificar:
+# 1. Debug Mode ativo no robô
+# 2. Firewall: sudo ufw status
+# 3. Conectividade: ping 192.168.123.164
+```
